@@ -2,7 +2,7 @@
 #define INDEXER_H
 
 // Tamaño de nuestra tabla hash principal. Un número primo suele ser una buena elección.
-#define HASH_TABLE_SIZE 1009 
+#define HASH_TABLE_SIZE 986287 
 
 // Estructura para cada nodo en nuestro archivo index.dat
 // Cada nodo es un eslabón de una lista enlazada.
