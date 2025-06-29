@@ -7,7 +7,7 @@
 
 int main(void) {
 
-    const char *csv_filepath = "Data2005.csv"; // Archivo CSV de entrada
+    const char *csv_filepath = "DataC.csv"; // Archivo CSV de entrada
     const char *header_filepath = "header.dat"; // Archivo de cabecera de salida
     const char *index_filepath = "index.dat"; // Archivo de índice de salida
 

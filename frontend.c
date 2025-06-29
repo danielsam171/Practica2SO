@@ -13,54 +13,117 @@
 GtkWidget *entry_id;
 GtkWidget *entry_year;
 GtkWidget *entry_month;
-GtkWidget *label_result;
+// GtkWidget *label_result; // Ya no usaremos esto. Puedes borrarlo.
 
-void send_request_to_backend(const char *id, const char *year, const char *month) {
+// NUESTROS NUEVOS WIDGETS
+GtkWidget *text_view;       // Aquí se mostrará el texto de los resultados.
+GtkTextBuffer *text_buffer; // Este es el "almacén" donde vive el texto que se muestra en text_view.
+
+void send_request_to_backend(const char *id, const char *year, const char *month)
+{
     int fd;
     char request[MAX_LINE_LEN];
-    
+
     // Create the request string
     snprintf(request, sizeof(request), "%s|%s|%s", id, year, month);
-    
+
     // Open the input pipe (frontend writes to this)
     mkfifo(INPUT_PIPE, 0666);
     fd = open(INPUT_PIPE, O_WRONLY);
-    write(fd, request, strlen(request)+1);
+    write(fd, request, strlen(request) + 1);
     close(fd);
 }
 
 void read_response_from_backend() {
     int fd;
-    char response[MAX_LINE_LEN];
     
-    // Open the output pipe (frontend reads from this)
+    // 1. Abrimos la tubería para leer
     fd = open(OUTPUT_PIPE, O_RDONLY);
-    read(fd, response, sizeof(response));
+    if (fd == -1) {
+        perror("Frontend: Error abriendo OUTPUT_PIPE para lectura");
+        gtk_text_buffer_set_text(text_buffer, "Error: No se pudo conectar con el backend.", -1);
+        return;
+    }
+
+    // 2. Preparamos un búfer de resultados dinámico, igual que en el backend
+    size_t buffer_size = 4096; // Tamaño inicial
+    size_t total_bytes_read = 0;
+    char *response_buffer = malloc(buffer_size);
+    if (response_buffer == NULL) {
+        perror("Frontend: Fallo de malloc inicial");
+        close(fd);
+        return;
+    }
+
+    // 3. Leemos de la tubería en un bucle hasta que se vacíe
+    while (1) {
+        // Comprobamos si necesitamos más espacio ANTES de leer
+        if (total_bytes_read + 2048 > buffer_size) { // Dejamos un margen de 2KB
+            buffer_size *= 2;
+            char *new_buffer = realloc(response_buffer, buffer_size);
+            if (new_buffer == NULL) {
+                perror("Frontend: Fallo de realloc");
+                free(response_buffer);
+                close(fd);
+                return;
+            }
+            response_buffer = new_buffer;
+        }
+
+        // Intentamos leer un trozo (chunk) de la tubería
+        // Leemos en la posición correcta del búfer
+        ssize_t bytes_in_chunk = read(fd, response_buffer + total_bytes_read, buffer_size - total_bytes_read - 1);
+
+        if (bytes_in_chunk > 0) {
+            // Si leímos algo, actualizamos nuestro contador total
+            total_bytes_read += bytes_in_chunk;
+        } else if (bytes_in_chunk == 0) {
+            // Si read devuelve 0, significa que no hay más datos. Hemos terminado.
+            break;
+        } else {
+            // Si read devuelve -1, hubo un error.
+            perror("Frontend: Error leyendo de la tubería");
+            break;
+        }
+    }
+
+    // 4. Cerramos la tubería
     close(fd);
+
+    // 5. Nos aseguramos de que la cadena esté terminada en nulo
+    response_buffer[total_bytes_read] = '\0';
     
-    // Update the GUI with the response
-    gtk_label_set_text(GTK_LABEL(label_result), response);
+    // 6. Actualizamos la GUI con la respuesta COMPLETA
+    gtk_text_buffer_set_text(text_buffer, response_buffer, -1);
+
+    // 7. ¡MUY IMPORTANTE! Liberamos la memoria que asignamos.
+    free(response_buffer);
 }
 
-void search_id(GtkWidget *widget, gpointer data) {
+void search_id(GtkWidget *widget, gpointer data)
+{
     const char *id_to_find = gtk_entry_get_text(GTK_ENTRY(entry_id));
     const char *year_str = gtk_entry_get_text(GTK_ENTRY(entry_year));
     const char *month_str = gtk_entry_get_text(GTK_ENTRY(entry_month));
-    
+
     // Validate month input
-    if (strlen(month_str) > 0) {
+    if (strlen(month_str) > 0)
+    {
         int month = atoi(month_str);
-        if (month < 1 || month > 12) {
-            gtk_label_set_text(GTK_LABEL(label_result), "Error: El mes debe ser un número entre 1 y 12.");
+        if (month < 1 || month > 12)
+        {
+            // Corregida
+            gtk_text_buffer_set_text(text_buffer, "Error: El mes debe ser un número entre 1 y 12.", -1);
             return;
         }
     }
-    
+
     send_request_to_backend(id_to_find, year_str, month_str);
     read_response_from_backend();
 }
 
-static void activate(GtkApplication *app, gpointer user_data) {
+static void activate(GtkApplication *app, gpointer user_data)
+{
     GtkWidget *window;
     GtkWidget *grid;
     GtkWidget *label_prompt_id, *label_prompt_year, *label_prompt_month;
@@ -108,18 +171,39 @@ static void activate(GtkApplication *app, gpointer user_data) {
     gtk_grid_attach(GTK_GRID(grid), button_search, 1, 3, 1, 1);
     g_signal_connect(button_search, "clicked", G_CALLBACK(search_id), NULL);
 
-    label_result = gtk_label_new("Resultados aparecerán aquí.");
-    gtk_label_set_selectable(GTK_LABEL(label_result), TRUE);
-    gtk_label_set_xalign(GTK_LABEL(label_result), 0.0);
-    gtk_label_set_line_wrap(GTK_LABEL(label_result), TRUE);
-    gtk_grid_attach(GTK_GRID(grid), label_result, 0, 4, 3, 1);
-    gtk_widget_set_hexpand(label_result, TRUE);
-    gtk_widget_set_vexpand(label_result, TRUE);
+    // 1. Crear una ventana con barras de desplazamiento.
+    GtkWidget *scrolled_window = gtk_scrolled_window_new(NULL, NULL);
+    // Le decimos que muestre las barras de desplazamiento solo cuando sea necesario.
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled_window), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+    // Le decimos al grid que esta ventana debe expandirse para llenar el espacio.
+    gtk_widget_set_hexpand(scrolled_window, TRUE);
+    gtk_widget_set_vexpand(scrolled_window, TRUE);
+    // La añadimos al grid en la misma posición donde estaba la etiqueta.
+    gtk_grid_attach(GTK_GRID(grid), scrolled_window, 0, 4, 3, 1);
+
+    // 2. Crear el área de texto (nuestro reemplazo para GtkLabel).
+    text_view = gtk_text_view_new();
+
+    // 3. Obtener el "buffer" del texto. El buffer es donde se guarda el texto.
+    // Siempre modificamos el buffer, no la vista directamente.
+    text_buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(text_view));
+    gtk_text_buffer_set_text(text_buffer, "Resultados aparecerán aquí.", -1);
+
+    // 4. Configurar el área de texto para que sea de solo lectura.
+    gtk_text_view_set_editable(GTK_TEXT_VIEW(text_view), FALSE);
+    // Opcional: Oculta el cursor parpadeante de texto.
+    gtk_text_view_set_cursor_visible(GTK_TEXT_VIEW(text_view), FALSE);
+    // Opcional: Hace que el texto se ajuste a la ventana (word wrap).
+    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(text_view), GTK_WRAP_WORD_CHAR);
+
+    // 5. ¡El paso CLAVE! Añadimos el área de texto DENTRO de la ventana con scroll.
+    gtk_container_add(GTK_CONTAINER(scrolled_window), text_view);
 
     gtk_widget_show_all(window);
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
     GtkApplication *app;
     int status;
 
