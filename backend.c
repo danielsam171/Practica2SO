@@ -132,6 +132,7 @@ void perform_search(const char *id_to_find, int filter_year, int filter_month, c
     if (!index_file)
     {
         fclose(header_file);
+        fclose(index_file);
         perror("Error abriendo archivo de índice");
         return;
     }
@@ -151,13 +152,13 @@ void perform_search(const char *id_to_find, int filter_year, int filter_month, c
 
     // Buffer para leer líneas del CSV y almacenar resultados
 
-    // char line_buffer[MAX_LINE_LEN];
-    //  char result_buffer[MAX_LINE_LEN * 10]; // Buffer for results
     size_t buffer_size = INITIAL_BUFFER_SIZE;
     size_t buffer_pos = 0; // Posición actual de escritura (longitud de la cadena)
+
+    //reservo espacio para el buffer de resultados
     char *result_buffer = malloc(buffer_size);
 
-    // Es VITAL comprobar si malloc funcionó
+    // Vaalido error
     if (result_buffer == NULL)
     {
         perror("Error: Fallo al asignar memoria inicial");
@@ -166,18 +167,19 @@ void perform_search(const char *id_to_find, int filter_year, int filter_month, c
         fclose(csv_file);
         return; // Salimos de la función si no hay memoria
     }
-    // la inicializacion del buffer de resultados con una cadena vacía
+
+    // la inicializacion del buffer de resultados con una cadena vacía para iniciar
     result_buffer[0] = '\0';
 
     const char *csv_headers = "BibNumber,ItemBarcode,ItemType,Collection,CallNumber,CheckoutDateTime\n";
 
     // Leer el archivo CSV y buscar el ID
     // Recorremos la lista enlazada de nodos en el índice
-    // Cada nodo contiene un offset al registro en el CSV( el offset es como la dirección de memoria del registro en el CSV)
+    // Cada nodo contiene un offset al registro en el CSV(el offset es como la dirección de memoria del registro en el CSV)
     while (current_node_offset != -1)
     {
-
-        fseek(index_file, current_node_offset, SEEK_SET); // Mover al nodo actual en el archivo de índice, para eso es fseek(mover puntero de lectura/escritura)
+        // Mover al nodo actual en el archivo de índice, para eso es fseek(mover puntero de lectura/escritura)
+        fseek(index_file, current_node_offset, SEEK_SET); 
 
         // Leemos el nodo completo en la variable 'current_node'.
         IndexNode current_node;
@@ -191,10 +193,10 @@ void perform_search(const char *id_to_find, int filter_year, int filter_month, c
         }
 
         // Ahora leemos el registro correspondiente en el archivo CSV usando el offset del nodo
-        // fseek mueve el puntero de lectura/escritura al offset del registro en el CSV
+        // ya tenemos la dirección del registro en el CSV, así que movemos el puntero de lectura al offset del registro
         fseek(csv_file, current_node.data_offset, SEEK_SET);
 
-        // fgets lee una línea completa del archivo CSV
+        // leemos la línea completa del CSV sin importar su longitud
         char *full_line = read_full_line(csv_file);
         if (full_line == NULL)
         {
@@ -208,15 +210,18 @@ void perform_search(const char *id_to_find, int filter_year, int filter_month, c
             free(full_line);
             break;
         }
+
+        // Copiamos la línea completa para no modificarla con strtok
         strcpy(line_copy_for_id, full_line);
 
+        // Extraemos el ID del registro, que está en la primera columna (índice 0)
         char *record_id = strtok(line_copy_for_id, ",");
 
         // Verificamos si el ID del registro coincide con el ID que estamos buscando
         if (record_id != NULL && strcmp(record_id, id_to_find) == 0)
         {
             // El ID coincide, ahora filtramos por fecha.
-            // Necesitamos otra copia para el segundo strtok.
+            // Necesitamos otra copia de la línea completa para extraer la fecha
             char *line_copy_for_date = malloc(strlen(full_line) + 1);
             if (line_copy_for_date == NULL)
             {
@@ -225,21 +230,30 @@ void perform_search(const char *id_to_find, int filter_year, int filter_month, c
                 break;
             }
             strcpy(line_copy_for_date, full_line);
-
+            
+            // Extraemos la fecha del registro, que está en la sexta columna (índice 5)
+            // Usamos strtok para saltar a la columna de fecha
             char *date_time_str = NULL;
             char *token = strtok(line_copy_for_date, ",");
             for (int col_idx = 0; token != NULL && col_idx < 5; col_idx++)
             {
                 token = strtok(NULL, ",");
             }
+
+            // Ahora token apunta a la columna de fecha (sexta columna)
+            // data_time_str <-- fecha y hora del registro
             if (token != NULL)
             {
                 date_time_str = token;
             }
-
+            
+            //En este punto voy a guardar la fecha en estas 3 variables
             int record_month, record_day, record_year;
+
+            // Ahora extraemos el mes, día y año de la fecha aunque no necesitamos el dia
             if (date_time_str && sscanf(date_time_str, "%d/%d/%d", &record_month, &record_day, &record_year) == 3)
             {
+                // Comprobamos si el año y mes coinciden con los filtros o si no hay filtros
                 int year_matches = (filter_year == 0 || record_year == filter_year);
                 int month_matches = (filter_month == 0 || record_month == filter_month);
                 if (year_matches && month_matches)
