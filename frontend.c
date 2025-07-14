@@ -13,9 +13,7 @@
 GtkWidget *entry_id;
 GtkWidget *entry_year;
 GtkWidget *entry_month;
-// GtkWidget *label_result; // Ya no usaremos esto. Puedes borrarlo.
 
-// NUESTROS NUEVOS WIDGETS
 GtkWidget *text_view;       // Aquí se mostrará el texto de los resultados.
 GtkTextBuffer *text_buffer; // Este es el "almacén" donde vive el texto que se muestra en text_view.
 
@@ -96,7 +94,7 @@ void read_response_from_backend() {
     // 6. Actualizamos la GUI con la respuesta COMPLETA
     gtk_text_buffer_set_text(text_buffer, response_buffer, -1);
 
-    // 7. ¡MUY IMPORTANTE! Liberamos la memoria que asignamos.
+    // 7. Liberamos la memoria que asignamos.
     free(response_buffer);
 }
 
@@ -112,7 +110,7 @@ void search_id(GtkWidget *widget, gpointer data)
         int month = atoi(month_str);
         if (month < 1 || month > 12)
         {
-            // Corregida
+            // Si el mes no es valido, mostramos un mensaje de error en el área de texto.
             gtk_text_buffer_set_text(text_buffer, "Error: El mes debe ser un número entre 1 y 12.", -1);
             return;
         }
@@ -130,7 +128,7 @@ static void activate(GtkApplication *app, gpointer user_data)
     GtkWidget *button_search;
 
     window = gtk_application_window_new(app);
-    gtk_window_set_title(GTK_WINDOW(window), "Buscador de IDs CSV con Filtro de Fecha");
+    gtk_window_set_title(GTK_WINDOW(window), "Sistema de Búsqueda de Préstamos de la Biblioteca Pública de Seattle");
     gtk_window_set_default_size(GTK_WINDOW(window), 700, 500);
 
     grid = gtk_grid_new();
@@ -207,7 +205,7 @@ int main(int argc, char **argv)
     GtkApplication *app;
     int status;
 
-    // Create pipes (just in case they don't exist)
+    // Creo las tuberias si no existen. Pero ps el frontend no las crea, las crea el backend.
     mkfifo(INPUT_PIPE, 0666);
     mkfifo(OUTPUT_PIPE, 0666);
 

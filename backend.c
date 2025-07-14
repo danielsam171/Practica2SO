@@ -44,7 +44,7 @@ char *read_full_line(FILE *stream)
     line[line_len] = '\0';
 
     if (line_len == 0 && c == EOF)
-    {
+    {   
         free(line);
         return NULL;
     }
@@ -58,7 +58,7 @@ char *append_to_buffer(char *buffer, size_t *buffer_pos, size_t *buffer_size, co
 {
     size_t len_to_add = strlen(str_to_add);
 
-    // Comprobamos si necesitamos más espacio. (+1 para el carácter nulo '\0')
+    // Comprobamos si necesitamos más espacio. (+1 para el carácter nulo  '\0')
     if (*buffer_pos + len_to_add + 1 > *buffer_size)
     {
         size_t new_size = *buffer_size * 2; // Duplicamos el tamaño
@@ -337,13 +337,13 @@ int main()
     char month_str[16];
     int filter_year, filter_month;
 
-    // Create pipes (just in case they don't exist)
+    // Crear las tuberias en caso de que no existan
     mkfifo(INPUT_PIPE, 0666);
     mkfifo(OUTPUT_PIPE, 0666);
 
     while (1)
     {
-        // Read from input pipe
+        // Leer del frontend a través del pipe
         int fd = open(INPUT_PIPE, O_RDONLY);
         read(fd, request, sizeof(request));
         close(fd);
